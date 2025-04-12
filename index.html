@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Almacenamiento básico para practicar</title>
+  <script src="https://cdn.jsdelivr.net/npm/lz-string@1.4.4/libs/lz-string.min.js"></script>
+  <style>
+    body {
+      background-color: #121212;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', sans-serif;
+      padding: 30px;
+      text-align: center;
+    }
+
+    h1 {
+      color: #00aaff;
+    }
+
+    input[type="file"] {
+      background: #1e1e1e;
+      color: #ffffff;
+      border: 1px solid #00aaff;
+      padding: 8px;
+      border-radius: 6px;
+    }
+
+    button {
+      background-color: #00aaff;
+      color: #fff;
+      border: none;
+      padding: 10px 20px;
+      margin: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #008ecc;
+    }
+
+    #galeria {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 20px;
+    }
+
+    #galeria img {
+      border: 2px solid #00aaff;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #00aaff55;
+      transition: transform 0.3s ease;
+    }
+
+    #galeria img:hover {
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Imágenes seguras en el navegador</h1>
+  <input type="file" id="imageInput" accept="image/*">
+  <button onclick="subirImagen()">Subir imagen</button>
+
+  <div id="galeria"></div>
+
+  <script>
+const dbName = 'secure_storage_db';
+const storeName = 'settings';
+
+// Verificamos si el PIN ya está configurado
+async function checkPIN() {
+    const pin = await getStoredPIN();
+
+    if (!pin) {
+        // Si no existe el PIN, solicitamos uno nuevo
+        solicitarPIN();
+    } else {
+        // Si existe, solicitamos que el usuario lo ingrese
+        const enteredPIN = prompt("Ingresa el PIN para acceder:");
+        if (enteredPIN === pin) {
+            alert("PIN correcto. Acceso permitido.");
+            mostrarGaleria();
+        } else {
+            alert("PIN incorrecto. Acceso denegado.");
+            checkPIN(); // Vuelves a pedir el PIN si es incorrecto
+        }
+    }
+}
+
+// Almacenar el PIN en IndexedDB
+function storePIN(pin) {
+    const dbRequest = indexedDB.open(dbName, 1);
+
+    dbRequest.onsuccess = (event) => {
+        const db = event.target.result;
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        store.put({ id: 'pin', value: pin });
+
+        tx.oncomplete = () => {
+            alert("PIN configurado correctamente.");
+        };
+    };
+}
+
+// Obtener PIN de IndexedDB
+function getStoredPIN() {
+    return new Promise((resolve, reject) => {
+        const dbRequest = indexedDB.open(dbName, 1);
+
+        dbRequest.onsuccess = (event) => {
+            const db = event.target.result;
+            const tx = db.transaction(storeName, 'readonly');
+            const store = tx.objectStore(storeName);
+            const request = store.get('pin');
+
+            request.onsuccess = (e) => {
+                resolve(e.target.result ? e.target.result.value : null);
+            };
+
+            request.onerror = () => {
+                reject('Error al obtener el PIN');
+            };
+        };
+    });
+}
+
+// Solicitar un PIN si aún no está almacenado
+function solicitarPIN() {
+    const pin = prompt("Configura un PIN para acceder:");
+    if (pin) {
+        storePIN(pin);
+    }
+}
+
+// Función para subir la imagen
+function subirImagen() {
+    const inputFile = document.getElementById('imageInput');
+    if (inputFile.files.length === 0) {
+        alert("Por favor, selecciona una imagen.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("image", inputFile.files[0]);
+
+    fetch('https://api.imgur.com/3/image', {
+        method: 'POST',
+        headers: {
+            Authorization: `Client-ID ${clientId}`
+        },
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const imageUrl = data.data.link;  // URL de la imagen subida
+            guardarImagen(imageUrl);  // Guardar URL en IndexedDB
+            mostrarGaleria();  // Mostrar las imágenes guardadas
+        } else {
+            alert("Error al subir la imagen.");
+        }
+    })
+    .catch(error => {
+        console.error("Error:", error);
+        alert("Ocurrió un error al subir la imagen.");
+    });
+}
+
+// Función para guardar la URL de la imagen en IndexedDB
+function guardarImagen(url) {
+    const dbRequest = indexedDB.open(dbName, 1);
+
+    dbRequest.onsuccess = (event) => {
+        const db = event.target.result;
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+
+        const imagenesGuardadas = JSON.parse(localStorage.getItem('imagenes')) || [];
+        imagenesGuardadas.push(url);
+        localStorage.setItem('imagenes', JSON.stringify(imagenesGuardadas));
+
+        tx.oncomplete = () => {
+            alert("Imagen guardada.");
+        };
+    };
+}
+
+// Función para mostrar las imágenes guardadas
+function mostrarGaleria() {
+    const galeria = document.getElementById('galeria');
+    galeria.innerHTML = '';  // Limpiar galería antes de mostrar
+
+    const imagenesGuardadas = JSON.parse(localStorage.getItem('imagenes')) || [];
+    imagenesGuardadas.forEach(url => {
+        const imgElement = document.createElement('img');
+        imgElement.src = url;
+        imgElement.style.width = '200px';
+        imgElement.style.margin = '10px';
+        galeria.appendChild(imgElement);
+    });
+}
+
+// Ejecutar la verificación del PIN al cargar la página
+window.onload = checkPIN;
+</script>
+</body>
+</html>
